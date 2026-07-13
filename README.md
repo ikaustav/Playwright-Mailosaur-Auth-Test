@@ -1,114 +1,60 @@
-# 🛡️ Playwright + Mailosaur Auth-Flow Test Kit
+# Auth Flow CI Kit
 
-[![Playwright](https://img.shields.io/badge/Playwright-Enabled-2EAD33?logo=playwright)](https://playwright.dev/)
-[![Mailosaur](https://img.shields.io/badge/Mailosaur-Integrated-blue?logo=mailosaur)](https://mailosaur.com/)
+Two things, both scoped to **an application you own**:
 
-A complete, automated testing kit designed to regression-test your application's authentication flow in Continuous Integration (CI). This suite validates your end-to-end signup process, from initial registration to OTP email retrieval, verification, and dashboard access.
+1. **`tests/signup-otp.spec.js`** — a Playwright regression test that signs
+   up a fresh test account on your staging environment, retrieves the OTP
+   from a Mailosaur test inbox you control, verifies it, and confirms the
+   account reaches an authenticated dashboard. Also checks that a wrong OTP
+   is correctly rejected.
+2. **`docs/SECURITY_CHECKLIST.md`** — a checklist for hardening your own
+   auth flow: rate limiting, OTP entropy/lifecycle, session fixation,
+   clickjacking, and general signup/login hygiene.
 
-> **⚠️ Important Notice:** This is a working kit strictly intended for testing **your own application**. It does not discover or target arbitrary sites, and there is no vulnerability scanning component included. It relies on a base URL and a Mailosaur inbox that you actively own and configure.
+## Setup
 
----
-
-## ✨ Features
-
-*   **End-to-End Auth Testing:** Automates the complete user journey (Signup → Receive OTP → Verify → Authenticated Dashboard).
-*   **Mailosaur Integration:** Programmatically polls a dedicated testing inbox to intercept and read OTP emails in real time.
-*   **Negative Testing:** Automatically confirms that incorrect or expired codes are properly rejected.
-*   **CI/CD Ready:** Includes a GitHub Actions workflow out-of-the-box for automated runs on push, schedule, or manual dispatch.
-*   **Security Hardening Guide:** Ships with a robust security checklist for your development team to review auth-specific vulnerabilities.
-
----
-
-## 📂 Project Structure
-
-```text
-.
-├── .github/
-│   └── workflows/
-│       └── auth-flow-test.yml    # GitHub Actions CI pipeline
-├── docs/
-│   └── SECURITY_CHECKLIST.md     # Auth-flow defensive security checklist
-├── tests/
-│   └── signup-otp.spec.js        # Main Playwright test suite
-├── .env.example                  # Example environment variables
-├── playwright.config.js          # Playwright configuration file
-├── package.json                  # Node dependencies and scripts
-└── README.md                     # Project documentation
-
-🛠️ Prerequisites
-Before you begin, ensure you have the following:
-
-Node.js: v16.x or higher installed on your machine.
-
-Mailosaur Account: An active account with an API key and a configured Server ID.
-
-Target App Environment: A staging or local development version of your application to test against.
-
-🚀 Installation & Setup
-1. Clone the repository:
-
-Bash
-git clone [https://github.com/your-username/auth-flow-test-kit.git](https://github.com/your-username/auth-flow-test-kit.git)
-cd auth-flow-test-kit
-2. Install Node dependencies:
-
-Bash
+```bash
 npm install
-3. Install Playwright Browsers:
-
-Bash
 npx playwright install --with-deps chromium
-4. Configure Environment Variables:
-Copy the example environment file and fill in your credentials.
+cp .env.example .env.local   # fill in your own values
+```
 
-Bash
-cp .env.example .env.local
-Open .env.local and configure the following variables:
+Required environment variables:
 
-Code snippet
-BASE_URL=[https://staging.yourapp.com](https://staging.yourapp.com)
-MAILOSAUR_API_KEY=your_mailosaur_api_key_here
-MAILOSAUR_SERVER_ID=your_server_id_here
-5. Update Test Selectors:
-Open tests/signup-otp.spec.js and update the DOM selectors (e.g., #email-input, #submit-btn) to match your application's actual HTML structure.
+| Variable | Description |
+|---|---|
+| `BASE_URL` | Your staging/test app URL (e.g. `https://staging.yourapp.com`) |
+| `MAILOSAUR_API_KEY` | API key for your Mailosaur account |
+| `MAILOSAUR_SERVER_ID` | The Mailosaur server/inbox ID you use for test emails |
+| `TEST_USER_PASSWORD` | Fixed password for the throwaway CI test accounts |
 
-🧪 Running the Tests
-You can run the tests using various Playwright commands depending on your needs:
+## Running locally
 
-Run tests in headless mode (Default):
-
-Bash
+```bash
+export $(cat .env.local | xargs)
 npm test
-Run tests with the Playwright UI (Recommended for debugging):
+```
 
-Bash
-npm run test:ui
-Run tests in headed mode (Watch the browser execute):
+## Running in CI
 
-Bash
-npm run test:headed
-⚙️ CI/CD Integration
-This kit includes a fully configured GitHub Actions workflow (.github/workflows/auth-flow-test.yml).
+`.github/workflows/auth-flow-test.yml` runs the test on push to `main`, on a
+daily schedule, and on manual dispatch. Add `STAGING_BASE_URL`,
+`MAILOSAUR_API_KEY`, `MAILOSAUR_SERVER_ID`, and `TEST_USER_PASSWORD` as
+repository secrets.
 
-To activate it:
+## Adjusting to your app
 
-Navigate to your repository's Settings > Secrets and variables > Actions.
+The test uses generic selectors (`getByLabel('Email')`,
+`getByRole('button', { name: /sign up/i })`, etc.) — update these to match
+your actual signup/verification UI. The OTP-extraction regex
+(`/\b(\d{6})\b/`) assumes a 6-digit numeric code; adjust it to match your
+email template if your codes look different.
 
-Add the following repository secrets:
+## Out of scope (intentionally)
 
- ~BASE_URL
- ~MAILOSAUR_API_KEY
- ~MAILOSAUR_SERVER_ID
-
-The tests will now automatically run on any push to the main branch, or via a nightly schedule.
-
-🔐 Security Checklist
-Auth flows are frequent targets for exploitation. Please review the included docs/SECURITY_CHECKLIST.md with your development team. It covers critical defensive checks, including:
-
-~Rate Limiting & Throttling: Preventing brute-force attacks on OTP endpoints.
-~OTP Lifecycle & Entropy: Ensuring codes are sufficiently random and expire promptly.
-~Session Management: Preventing session fixation post-authentication.
-~UI Defenses: Validating CORS policies and clickjacking mitigations (X-Frame-Options / CSP).
-
-📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+This kit does not discover or target arbitrary websites, generate synthetic
+identities for evading anti-abuse systems, solve CAPTCHAs, or rotate proxies
+to avoid detection. It's a regression test for one app you already control,
+run with credentials and an inbox you already own. If you need broader
+security testing against third-party systems, that requires a scoped,
+written pentest authorization — not an automation script.

@@ -1,0 +1,16 @@
+{
+  "name": "auth-flow-ci-kit",
+  "version": "1.0.0",
+  "description": "CI regression test for your own app's signup/OTP flow, plus an auth hardening checklist.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  },
+  "dependencies": {
+    "mailosaur": "^7.0.0"
+  }
+}
