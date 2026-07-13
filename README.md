@@ -1,186 +1,114 @@
-#!/bin/bash
-
-echo "🚀 Bootstrapping Playwright + Mailosaur Auth-Flow Test Kit..."
-
-# Create directory structure
-mkdir -p .github/workflows docs tests
-
-# 1. package.json
-cat << 'EOF' > package.json
-{
-  "name": "auth-flow-test-kit",
-  "version": "1.0.0",
-  "description": "Playwright and Mailosaur automated auth flow tests",
-  "scripts": {
-    "test": "playwright test",
-    "test:ui": "playwright test --ui",
-    "test:headed": "playwright test --headed"
-  },
-  "dependencies": {
-    "mailosaur": "^8.5.0"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.40.0",
-    "dotenv": "^16.3.1"
-  }
-}
-EOF
-
-# 2. playwright.config.js
-cat << 'EOF' > playwright.config.js
-const { defineConfig, devices } = require('@playwright/test');
-require('dotenv').config({ path: '.env.local' });
-
-module.exports = defineConfig({
-  testDir: './tests',
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
-  use: {
-    baseURL: process.env.BASE_URL,
-    trace: 'on-first-retry',
-  },
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    }
-  ],
-});
-EOF
-
-# 3. .env.example
-cat << 'EOF' > .env.example
-# Your target staging or local URL
-BASE_URL=https://staging.yourapp.com
-
-# Mailosaur Credentials
-MAILOSAUR_API_KEY=your_mailosaur_api_key_here
-MAILOSAUR_SERVER_ID=your_server_id_here
-EOF
-
-# 4. tests/signup-otp.spec.js
-cat << 'EOF' > tests/signup-otp.spec.js
-const { test, expect } = require('@playwright/test');
-const MailosaurClient = require('mailosaur');
-
-test.describe('Authentication Flow Validation', () => {
-  const mailosaur = new MailosaurClient(process.env.MAILOSAUR_API_KEY);
-  const serverId = process.env.MAILOSAUR_SERVER_ID;
-
-  test('User can sign up, receive OTP, and authenticate', async ({ page }) => {
-    // Generate a random email address using your Mailosaur Server ID
-    const randomString = Math.random().toString(36).substring(7);
-    const testEmail = `test-${randomString}@${serverId}.mailosaur.net`;
-
-    // 1. Navigate to your app and initiate signup
-    await page.goto('/signup'); // Appends to BASE_URL automatically
-    await page.fill('input[name="email"]', testEmail);
-    await page.fill('input[name="password"]', 'SecurePassword123!');
-    await page.click('button[type="submit"]');
-
-    // 2. Poll Mailosaur for the OTP email
-    const email = await mailosaur.messages.get(serverId, {
-      sentTo: testEmail
-    });
-
-    // Extract OTP (Assumes OTP is a 6-digit code in the email body)
-    const otpMatch = email.text.body.match(/\b\d{6}\b/);
-    expect(otpMatch).toBeTruthy();
-    const otpCode = otpMatch[0];
-
-    // 3. Enter the OTP into your application
-    await page.fill('input[name="otp"]', otpCode);
-    await page.click('button[type="submit"]');
-
-    // 4. Verify successful authentication (e.g., landing on dashboard)
-    await expect(page).toHaveURL(/.*\/dashboard/);
-    await expect(page.locator('text="Welcome"')).toBeVisible();
-  });
-});
-EOF
-
-# 5. .github/workflows/auth-flow-test.yml
-cat << 'EOF' > .github/workflows/auth-flow-test.yml
-name: Auth Flow CI
-on:
-  push:
-    branches: [ main ]
-  schedule:
-    - cron: '0 2 * * *' # Runs nightly at 2 AM
-  workflow_dispatch:
-
-jobs:
-  test:
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: lts/*
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps chromium
-      
-    - name: Run Playwright tests
-      run: npm run test
-      env:
-        BASE_URL: ${{ secrets.BASE_URL }}
-        MAILOSAUR_API_KEY: ${{ secrets.MAILOSAUR_API_KEY }}
-        MAILOSAUR_SERVER_ID: ${{ secrets.MAILOSAUR_SERVER_ID }}
-        
-    - uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: playwright-report
-        path: playwright-report/
-        retention-days: 15
-EOF
-
-# 6. docs/SECURITY_CHECKLIST.md
-cat << 'EOF' > docs/SECURITY_CHECKLIST.md
-# 🔐 Auth Flow Security Checklist
-
-Use this checklist to harden your authentication endpoints and protect against common exploits.
-
-## 1. Brute Force & Rate Limiting
-- [ ] Are IP-based rate limits enforced on the `/signup` and `/login` endpoints?
-- [ ] Are account-based rate limits enforced for OTP verification?
-- [ ] Does the system temporarily lock out an account after X failed OTP attempts?
-
-## 2. OTP Lifecycle & Entropy
-- [ ] Are OTP codes cryptographically random?
-- [ ] Do OTP codes expire within a short timeframe (e.g., 5-15 minutes)?
-- [ ] Is an OTP immediately invalidated once it is successfully used?
-
-## 3. Session Management
-- [ ] Is a new session ID generated upon successful OTP verification to prevent Session Fixation?
-- [ ] Are authentication cookies flagged with `HttpOnly`, `Secure`, and `SameSite` attributes?
-
-## 4. UI / Transport Defenses
-- [ ] Are X-Frame-Options or Content-Security-Policy (CSP) headers set to prevent clickjacking?
-- [ ] Is HSTS (Strict-Transport-Security) enabled across the site?
-EOF
-
-# 7. README.md
-cat << 'EOF' > README.md
 # 🛡️ Playwright + Mailosaur Auth-Flow Test Kit
+
+[![Playwright](https://img.shields.io/badge/Playwright-Enabled-2EAD33?logo=playwright)](https://playwright.dev/)
+[![Mailosaur](https://img.shields.io/badge/Mailosaur-Integrated-blue?logo=mailosaur)](https://mailosaur.com/)
 
 A complete, automated testing kit designed to regression-test your application's authentication flow in Continuous Integration (CI). This suite validates your end-to-end signup process, from initial registration to OTP email retrieval, verification, and dashboard access.
 
-## 🚀 Quick Start
-1. Run `npm install`
-2. Run `npx playwright install --with-deps chromium`
-3. Copy `.env.example` to `.env.local` and fill in your keys.
-4. Run tests with `npm test`
-EOF
+> **⚠️ Important Notice:** This is a working kit strictly intended for testing **your own application**. It does not discover or target arbitrary sites, and there is no vulnerability scanning component included. It relies on a base URL and a Mailosaur inbox that you actively own and configure.
 
-echo "✅ Setup complete! Navigate to the directory, run 'npm install', and setup your '.env.local' file."
+---
+
+## ✨ Features
+
+*   **End-to-End Auth Testing:** Automates the complete user journey (Signup → Receive OTP → Verify → Authenticated Dashboard).
+*   **Mailosaur Integration:** Programmatically polls a dedicated testing inbox to intercept and read OTP emails in real time.
+*   **Negative Testing:** Automatically confirms that incorrect or expired codes are properly rejected.
+*   **CI/CD Ready:** Includes a GitHub Actions workflow out-of-the-box for automated runs on push, schedule, or manual dispatch.
+*   **Security Hardening Guide:** Ships with a robust security checklist for your development team to review auth-specific vulnerabilities.
+
+---
+
+## 📂 Project Structure
+
+```text
+.
+├── .github/
+│   └── workflows/
+│       └── auth-flow-test.yml    # GitHub Actions CI pipeline
+├── docs/
+│   └── SECURITY_CHECKLIST.md     # Auth-flow defensive security checklist
+├── tests/
+│   └── signup-otp.spec.js        # Main Playwright test suite
+├── .env.example                  # Example environment variables
+├── playwright.config.js          # Playwright configuration file
+├── package.json                  # Node dependencies and scripts
+└── README.md                     # Project documentation
+
+🛠️ Prerequisites
+Before you begin, ensure you have the following:
+
+Node.js: v16.x or higher installed on your machine.
+
+Mailosaur Account: An active account with an API key and a configured Server ID.
+
+Target App Environment: A staging or local development version of your application to test against.
+
+🚀 Installation & Setup
+1. Clone the repository:
+
+Bash
+git clone [https://github.com/your-username/auth-flow-test-kit.git](https://github.com/your-username/auth-flow-test-kit.git)
+cd auth-flow-test-kit
+2. Install Node dependencies:
+
+Bash
+npm install
+3. Install Playwright Browsers:
+
+Bash
+npx playwright install --with-deps chromium
+4. Configure Environment Variables:
+Copy the example environment file and fill in your credentials.
+
+Bash
+cp .env.example .env.local
+Open .env.local and configure the following variables:
+
+Code snippet
+BASE_URL=[https://staging.yourapp.com](https://staging.yourapp.com)
+MAILOSAUR_API_KEY=your_mailosaur_api_key_here
+MAILOSAUR_SERVER_ID=your_server_id_here
+5. Update Test Selectors:
+Open tests/signup-otp.spec.js and update the DOM selectors (e.g., #email-input, #submit-btn) to match your application's actual HTML structure.
+
+🧪 Running the Tests
+You can run the tests using various Playwright commands depending on your needs:
+
+Run tests in headless mode (Default):
+
+Bash
+npm test
+Run tests with the Playwright UI (Recommended for debugging):
+
+Bash
+npm run test:ui
+Run tests in headed mode (Watch the browser execute):
+
+Bash
+npm run test:headed
+⚙️ CI/CD Integration
+This kit includes a fully configured GitHub Actions workflow (.github/workflows/auth-flow-test.yml).
+
+To activate it:
+
+Navigate to your repository's Settings > Secrets and variables > Actions.
+
+Add the following repository secrets:
+
+ ~BASE_URL
+ ~MAILOSAUR_API_KEY
+ ~MAILOSAUR_SERVER_ID
+
+The tests will now automatically run on any push to the main branch, or via a nightly schedule.
+
+🔐 Security Checklist
+Auth flows are frequent targets for exploitation. Please review the included docs/SECURITY_CHECKLIST.md with your development team. It covers critical defensive checks, including:
+
+~Rate Limiting & Throttling: Preventing brute-force attacks on OTP endpoints.
+~OTP Lifecycle & Entropy: Ensuring codes are sufficiently random and expire promptly.
+~Session Management: Preventing session fixation post-authentication.
+~UI Defenses: Validating CORS policies and clickjacking mitigations (X-Frame-Options / CSP).
+
+📄 License
+This project is licensed under the MIT License - see the LICENSE file for details.
